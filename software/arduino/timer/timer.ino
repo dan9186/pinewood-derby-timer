@@ -1,5 +1,5 @@
 /*================================================================================*
-   Pinewood Derby Timer                                Version 3.00 - 31 Oct 2016
+   Pinewood Derby Timer                                Version 3.10 - 12 Dec 2020
    www.dfgtec.com/pdt
 
    Flexible and affordable Pinewood Derby timer that interfaces with the
@@ -10,7 +10,7 @@
    Refer to the website for setup and usage instructions.
 
 
-   Copyright (C) 2011-2018 David Gadberry
+   Copyright (C) 2011-2020 David Gadberry
 
    This work is licensed under the Creative Commons Attribution-NonCommercial-
    ShareAlike 3.0 Unported License. To view a copy of this license, visit
@@ -23,16 +23,18 @@
   - TIMER CONFIGURATION -
  *-----------------------------------------*/
 #define NUM_LANES   4                 // number of lanes
+#define GATE_RESET  0                 // Enable closing start gate to reset timer
 
-#define LED_DISPLAY  1                 // Enable lane place/time displays
-//#define DUAL_DISP    1                 // dual displays (front/back) per lane (4 lanes max)
+//#define LED_DISPLAY  1                 // Enable lane place/time displays
+//#define DUAL_DISP    1                 // dual displays per lane (4 lanes max)
+//#define DUAL_MODE    1                 // dual display mode
 //#define LARGE_DISP   1                 // utilize large Adafruit displays (see website)
+
 #define SHOW_PLACE   1                 // Show place mode
 #define PLACE_DELAY  3                 // Delay (secs) when displaying place/time
 #define MIN_BRIGHT   0                 // minimum display brightness (0-15)
 #define MAX_BRIGHT   2                // maximum display brightness (0-15)
 
-#define GATE_RESET   0                 // Enable closing start gate to reset timer
 /*-----------------------------------------*
   - END -
  *-----------------------------------------*/
@@ -47,7 +49,7 @@
 /*-----------------------------------------*
   - static definitions -
  *-----------------------------------------*/
-#define PDT_VERSION  "3.00"            // software version
+#define PDT_VERSION  "3.10"            // software version
 #define MAX_LANE     6                 // maximum number of lanes (Uno)
 #define MAX_DISP     8                 // maximum number of displays (Adafruit)
 
@@ -90,6 +92,7 @@
 #define SMSG_GVERS   'V'               // <- request timer version
 #define SMSG_DEBUG   'D'               // <- toggle debug on/off
 #define SMSG_GNUML   'N'               // <- request number of lanes
+#define SMSG_TINFO   'I'               // <- request timer information
 
 /*-----------------------------------------*
   - pin assignments -
@@ -141,7 +144,11 @@ unsigned char msgDashL[] = {0x00, 0x00, 0x00, 0x40, 0x00};  //   -
 unsigned char msgBlank[] = {0x00, 0x00, 0x00, 0x00, 0x00};  // (blank)
 
 #ifdef LED_DISPLAY                     // LED display control
-Adafruit_7segment  disp_mat[MAX_DISP];
+Adafruit_7segment disp_mat[MAX_DISP];
+#endif
+
+#ifdef DUAL_MODE                       // uses 8x8 matrix displays
+Adafruit_8x8matrix disp_8x8[MAX_DISP];
 #endif
 
 void initialize(boolean powerup=false);
@@ -178,6 +185,13 @@ void setup()
     disp_mat[n].clear();
     disp_mat[n].drawColon(false);
     disp_mat[n].writeDisplay();
+
+#ifdef DUAL_MODE
+    disp_8x8[n] = Adafruit_8x8matrix();
+    disp_8x8[n].begin(DISP_ADD[n]);
+    disp_8x8[n].clear();
+    disp_8x8[n].writeDisplay();
+#endif
   }
 #endif
 
@@ -389,6 +403,11 @@ void process_general_msgs()
       smsg_str(tmps);
   }
 
+  else if (serial_data == int(SMSG_TINFO))    // get timer information
+  {
+      send_timer_info();
+  }
+
   else if (serial_data == int(SMSG_DEBUG))    // toggle debug
   {
     fDebug = !fDebug;
@@ -518,7 +537,7 @@ void test_pdt_hw()
 
     for (int n=0; n<NUM_LANES; n++)
     {
-      sprintf(ctmp,"%04d", (int)display_level);
+      sprintf(ctmp,"%d%03d", (n+1), (int)display_level);
 
       disp_mat[n].clear();
 
@@ -531,6 +550,14 @@ void test_pdt_hw()
       disp_mat[n].writeDisplay();
 
 #ifdef DUAL_DISP
+#ifdef DUAL_MODE
+      disp_8x8[n+4].clear();
+      disp_8x8[n+4].setTextSize(1);
+      disp_8x8[n+4].setRotation(3);
+      disp_8x8[n+4].setCursor(2, 0);
+      disp_8x8[n+4].print("X");
+      disp_8x8[n+4].writeDisplay();
+#else
       disp_mat[n+4].clear();
 
       disp_mat[n+4].writeDigitNum(0, char2int(ctmp[0]), false);
@@ -540,6 +567,7 @@ void test_pdt_hw()
 
       disp_mat[n+4].drawColon(false);
       disp_mat[n+4].writeDisplay();
+#endif
 #endif
     }
 #endif
@@ -627,20 +655,41 @@ void update_display(int lane, unsigned char msg[])
 #ifdef LED_DISPLAY
   disp_mat[lane].clear();
 #ifdef DUAL_DISP
+#ifdef DUAL_MODE
+  disp_8x8[lane+4].clear();
+#else
   disp_mat[lane+4].clear();
+#endif
 #endif
 
   for (int d = 0; d<=4; d++)
   {
     disp_mat[lane].writeDigitRaw(d, msg[d]);
 #ifdef DUAL_DISP
+#ifdef DUAL_MODE
+    if (d == 3)
+    {
+      disp_8x8[lane+4].setTextSize(1);
+      disp_8x8[lane+4].setRotation(3);
+      disp_8x8[lane+4].setCursor(2, 0);
+      if (msg == msgBlank)
+         disp_8x8[lane+4].print(" ");
+      else
+         disp_8x8[lane+4].print("-");
+    }
+#else
     disp_mat[lane+4].writeDigitRaw(d, msg[d]);
+#endif
 #endif
   }
 
   disp_mat[lane].writeDisplay();
 #ifdef DUAL_DISP
+#ifdef DUAL_MODE
+  disp_8x8[lane+4].writeDisplay();
+#else
   disp_mat[lane+4].writeDisplay();
+#endif
 #endif
 #endif
 
@@ -665,14 +714,13 @@ void update_display(int lane, int display_place, unsigned long display_time, int
 #ifdef LED_DISPLAY
   if (display_mode)
   {
-    if (display_place > 0)
+    if (display_place > 0)  // show place order
     {
+      sprintf(cplace,"%1d", display_place);
+
       disp_mat[lane].clear();
       disp_mat[lane].drawColon(false);
-
-      sprintf(cplace,"%1d", display_place);
       disp_mat[lane].writeDigitNum(3, char2int(cplace[0]), false);
-
       disp_mat[lane].writeDisplay();
 
 #ifdef DUAL_DISP
@@ -687,15 +735,23 @@ void update_display(int lane, int display_place, unsigned long display_time, int
       update_display(lane, msgDashL);
     }
   }
-  else
+  else                      // show finish time
   {
     if (display_time > 0)
     {
       disp_mat[lane].clear();
       disp_mat[lane].drawColon(false);
+
 #ifdef DUAL_DISP
+#ifdef DUAL_MODE
+      disp_8x8[lane+4].clear();
+      disp_8x8[lane+4].setTextSize(1);
+      disp_8x8[lane+4].setRotation(3);
+      disp_8x8[lane+4].setCursor(2, 0);
+#else
       disp_mat[lane+4].clear();
       disp_mat[lane+4].drawColon(false);
+#endif
 #endif
 
       display_time_sec = (double)(display_time / (double)1000000.0);    // elapsed time (seconds)
@@ -712,7 +768,12 @@ void update_display(int lane, int display_place, unsigned long display_time, int
 #endif
         disp_mat[lane].writeDigitNum(d + int(d / 2), char2int(ctime[c]), showdot);    // time
 #ifdef DUAL_DISP
+#ifdef DUAL_MODE
+        sprintf(cplace,"%1d", display_place);
+        disp_8x8[lane+4].print(cplace[0]);
+#else
         disp_mat[lane+4].writeDigitNum(d + int(d / 2), char2int(ctime[c]), showdot);    // time
+#endif
 #endif
 
         c++; if (ctime[c] == '.') c++;
@@ -721,13 +782,19 @@ void update_display(int lane, int display_place, unsigned long display_time, int
 #ifdef LARGE_DISP
       disp_mat[lane].writeDigitRaw(2, 16);
 #ifdef DUAL_DISP
+#ifndef DUAL_MODE
       disp_mat[lane+4].writeDigitRaw(2, 16);
+#endif
 #endif
 #endif
 
       disp_mat[lane].writeDisplay();
 #ifdef DUAL_DISP
+#ifdef DUAL_MODE
+      disp_8x8[lane+4].writeDisplay();
+#else
       disp_mat[lane+4].writeDisplay();
+#endif
 #endif
     }
     else  // did not finish
@@ -786,7 +853,11 @@ void set_display_brightness()
     {
       disp_mat[n].setBrightness((int)display_level);
 #ifdef DUAL_DISP
+#ifdef DUAL_MODE
+      disp_8x8[n+4].setBrightness((int)display_level);
+#else
       disp_mat[n+4].setBrightness((int)display_level);
+#endif
 #endif
     }
   }
@@ -962,6 +1033,71 @@ void smsg_str(const char * msg, boolean crlf)
   {
     Serial.print(msg);
   }
+
+  return;
+}
+
+
+/*================================================================================*
+  SEND TIMER INFORMATION TO COMPUTER
+ *================================================================================*/
+void send_timer_info()
+{
+  char tmps[50];
+
+  Serial.println("-----------------------------");
+  sprintf(tmps, " PDT            Version %s", PDT_VERSION);
+  Serial.println(tmps);
+  Serial.println("-----------------------------");
+
+  sprintf(tmps, "  NUM_LANES     %d", NUM_LANES);
+  Serial.println(tmps);
+  sprintf(tmps, "  GATE_RESET    %d", GATE_RESET);
+  Serial.println(tmps);
+  sprintf(tmps, "  SHOW_PLACE    %d", SHOW_PLACE);
+  Serial.println(tmps);
+  sprintf(tmps, "  PLACE_DELAY   %d", PLACE_DELAY);
+  Serial.println(tmps);
+  sprintf(tmps, "  MIN_BRIGHT    %d", MIN_BRIGHT);
+  Serial.println(tmps);
+  sprintf(tmps, "  MAX_BRIGHT    %d", MAX_BRIGHT);
+  Serial.println(tmps);
+
+  Serial.println("");
+
+#ifdef LED_DISPLAY
+  Serial.println("  LED_DISPLAY   1");
+#else
+  Serial.println("  LED_DISPLAY   0");
+#endif
+
+#ifdef DUAL_DISP
+  Serial.println("  DUAL_DISP     1");
+#else
+  Serial.println("  DUAL_DISP     0");
+#endif
+#ifdef DUAL_MODE
+  Serial.println("  DUAL_MODE     1");
+#else
+  Serial.println("  DUAL_MODE     0");
+#endif
+
+#ifdef LARGE_DISP
+  Serial.println("  LARGE_DISP    1");
+#else
+  Serial.println("  LARGE_DISP    0");
+#endif
+
+  Serial.println("");
+
+  sprintf(tmps, "  ARDUINO VERS  %04d", ARDUINO);
+  Serial.println(tmps);
+  sprintf(tmps, "  COMPILE DATE  %s", __DATE__);
+  Serial.println(tmps);
+  sprintf(tmps, "  COMPILE TIME  %s", __TIME__);
+  Serial.println(tmps);
+
+  Serial.println("-----------------------------");
 
   return;
 }
