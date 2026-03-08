@@ -1,0 +1,22 @@
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Arduino IDE build artifacts
+build/
+*.elf
+*.hex
+*.map
+*.bin
+*.eep
+
+# Eagle / Fusion 360 Electronics backup and autosave files
+*.b#*
+*.s#*
+*.lck
+autosave/
+*~
+
+# Gerber CAM temporary output
+*.cam
