@@ -109,7 +109,12 @@ byte START_SOL    = 13;                // start solenoid
 int  DISP_ADD [MAX_DISP] = {0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77};    // display I2C addresses
 
 //                   Lane #    1     2     3     4     5     6
-byte LANE_DET [MAX_LANE] = {   2,    3,    4,    5,    6,    7};                // finish detection pins
+byte LANE_DET [MAX_LANE] = {   2,    3,    4,    5,    6,    7};                // finish detection pins (Arduino pin numbers)
+
+// RA4M1 port bit positions for each lane's detection pin (D2-D7 are all on Port 1)
+//   D2=P1_05, D3=P1_04, D4=P1_03, D5=P1_02, D6=P1_06, D7=P1_07
+//                      Lane #    1     2     3     4     5     6
+byte LANE_DET_BIT [MAX_LANE] = {  5,    4,    3,    2,    6,    7};             // Port 1 PIDR bit positions
 
 /*-----------------------------------------*
   - global variables -
@@ -168,12 +173,9 @@ void setup()
   pinMode(STATUS_LED_B, OUTPUT);
   pinMode(STATUS_LED_G, OUTPUT);
   pinMode(START_SOL,    OUTPUT);
-  pinMode(RESET_SWITCH, INPUT);
-  pinMode(START_GATE,   INPUT);
+  pinMode(RESET_SWITCH, INPUT_PULLUP);
+  pinMode(START_GATE,   INPUT_PULLUP);
   pinMode(BRIGHT_LEV,   INPUT);
-
-  digitalWrite(RESET_SWITCH, HIGH);    // enable pull-up resistor
-  digitalWrite(START_GATE,   HIGH);    // enable pull-up resistor
 
   digitalWrite(START_SOL, LOW);
 
@@ -197,9 +199,7 @@ void setup()
 
   for (int n=0; n<MAX_LANE; n++)
   {
-    pinMode(LANE_DET[n], INPUT);
-
-    digitalWrite(LANE_DET[n], HIGH);   // enable pull-up resistor
+    pinMode(LANE_DET[n], INPUT_PULLUP);
   }
   set_display_brightness();
 
@@ -308,7 +308,8 @@ void timer_racing_state()
   {
     current_time = micros();
 
-    for (int n=0; n<NUM_LANES; n++) lane_status[n] = bitRead(PIND, LANE_DET[n]);    // read status of all lanes
+    uint16_t port1 = R_PORT1->PIDR;
+    for (int n=0; n<NUM_LANES; n++) lane_status[n] = (port1 >> LANE_DET_BIT[n]) & 1;    // read status of all lanes
 
     for (int n=0; n<NUM_LANES; n++)
     {
@@ -483,7 +484,8 @@ void test_pdt_hw()
   {
     for (int n=0; n<NUM_LANES; n++)
     {
-      lane_status[n] = bitRead(PIND, LANE_DET[n]);    // read status of all lanes
+      uint16_t port1 = R_PORT1->PIDR;
+      lane_status[n] = (port1 >> LANE_DET_BIT[n]) & 1;    // read status of all lanes
 
       if (lane_status[n] == HIGH)
       {
